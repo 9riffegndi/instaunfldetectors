@@ -1,134 +1,358 @@
-import { useState, useEffect } from 'react'
-import { Toaster, toast } from 'react-hot-toast'
+import { useState, useEffect, useCallback } from 'react'
+import { toast, Toaster } from 'react-hot-toast'
 import Header from './components/Header'
 import FileUpload from './components/FileUpload'
-import UnfollowersList from './components/UnfollowersList'
 import Stats from './components/Stats'
+import UnfollowersList from './components/UnfollowersList'
 import WelcomeModal from './components/WelcomeModal'
 import { translations } from './translations'
+import { InfoIcon, WarningIcon, QuestionMarkIcon } from './components/EmojiIcons'
+
+// Tambahkan komponen debug
+const DebugPanel = ({ followersData, followingData, unfollowers, stats, loading }) => {
+  const [expanded, setExpanded] = useState(false);
+  
+  return (
+    <div className="fixed bottom-2 right-2 p-4 bg-base-300 shadow-xl rounded-lg z-50 max-w-md">
+      <div className="flex justify-between items-center">
+        <h3 className="font-bold">🔍 Debug Panel</h3>
+        <button className="btn btn-xs" onClick={() => setExpanded(!expanded)}>
+          {expanded ? 'Hide' : 'Show'}
+        </button>
+      </div>
+      
+      {expanded && (
+        <div className="mt-2">
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-base-200 p-2 rounded">
+              <p className="font-semibold">Followers:</p>
+              <p>{followersData ? followersData.length : 0}</p>
+            </div>
+            <div className="bg-base-200 p-2 rounded">
+              <p className="font-semibold">Following:</p>
+              <p>{followingData ? followingData.length : 0}</p>
+            </div>
+            <div className="bg-base-200 p-2 rounded">
+              <p className="font-semibold">Unfollowers:</p>
+              <p>{unfollowers ? unfollowers.length : 0}</p>
+            </div>
+            <div className="bg-base-200 p-2 rounded">
+              <p className="font-semibold">Loading:</p>
+              <p>{loading ? 'Yes' : 'No'}</p>
+            </div>
+          </div>
+          
+          <div className="mt-2">
+            <p className="font-semibold">Stats:</p>
+            <pre className="text-xs bg-base-200 p-2 rounded overflow-auto max-h-24">
+              {JSON.stringify(stats, null, 2)}
+            </pre>
+          </div>
+          
+          {followersData && followersData.length > 0 && (
+            <div className="mt-2">
+              <p className="font-semibold">Follower Sample:</p>
+              <pre className="text-xs bg-base-200 p-2 rounded overflow-auto max-h-24">
+                {JSON.stringify(followersData[0], null, 2)}
+              </pre>
+            </div>
+          )}
+          
+          {followingData && followingData.length > 0 && (
+            <div className="mt-2">
+              <p className="font-semibold">Following Sample:</p>
+              <pre className="text-xs bg-base-200 p-2 rounded overflow-auto max-h-24">
+                {JSON.stringify(followingData[0], null, 2)}
+              </pre>
+            </div>
+          )}
+          
+          <button 
+            className="btn btn-sm btn-warning mt-2 w-full"
+            onClick={() => {
+              console.log({
+                followersData,
+                followingData,
+                unfollowers,
+                stats,
+                loading
+              });
+              toast.success("Logged data to console");
+            }}
+          >
+            Log to Console
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 export default function App() {
-  const [followersData, setFollowersData] = useState(null)
-  const [followingData, setFollowingData] = useState(null)
-  const [unfollowers, setUnfollowers] = useState([])
-  const [loading, setLoading] = useState(false)
-  const [showWelcomeModal, setShowWelcomeModal] = useState(false)
+  const [followersData, setFollowersData] = useState(null);
+  const [followingData, setFollowingData] = useState(null);
+  const [unfollowers, setUnfollowers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [showWelcomeModal, setShowWelcomeModal] = useState(true);
   const [language, setLanguage] = useState(() => {
-    const savedLanguage = localStorage.getItem('language')
-    if (savedLanguage) return savedLanguage
-
-    const browserLanguage = navigator.language.split('-')[0]
-    return browserLanguage === 'id' ? 'id' : 'en'
-  })
+    const savedLanguage = localStorage.getItem('language');
+    if (savedLanguage && translations[savedLanguage]) {
+      return savedLanguage;
+    }
+    return navigator.language.startsWith('id') ? 'id' : 'en';
+  });
+  
   const [stats, setStats] = useState({
     totalFollowers: 0,
     totalFollowing: 0,
     unfollowersCount: 0
-  })
-
-  const t = translations[language]
-
+  });
+  
+  // Get translations
+  const t = translations[language];
+  
+  // Check if user has seen the tutorial
   useEffect(() => {
-    const hasSeenTutorial = localStorage.getItem('hasSeenTutorial')
-    if (!hasSeenTutorial) {
-      setShowWelcomeModal(true)
+    const hasSeenTutorial = localStorage.getItem('hasSeenTutorial');
+    if (hasSeenTutorial === 'true') {
+      setShowWelcomeModal(false);
     }
-  }, [])
-
+  }, []);
+  
   const handleCloseWelcomeModal = () => {
-    setShowWelcomeModal(false)
-    localStorage.setItem('hasSeenTutorial', 'true')
-  }
-
+    setShowWelcomeModal(false);
+    localStorage.setItem('hasSeenTutorial', 'true');
+  };
+  
   const handleShowTutorialAgain = () => {
-    setShowWelcomeModal(true)
-  }
-
+    setShowWelcomeModal(true);
+  };
+  
   const changeLanguage = (lang) => {
-    setLanguage(lang)
-    localStorage.setItem('language', lang)
-  }
-
-  const processData = () => {
+    setLanguage(lang);
+    localStorage.setItem('language', lang);
+  };
+  
+  // Function to process data with detailed logging
+  const processData = useCallback(() => {
     if (!followersData || !followingData) {
       toast.error(t.errorUploadBoth)
       return
     }
 
     setLoading(true)
-    try {
-      if (!Array.isArray(followersData) || !Array.isArray(followingData)) {
-        throw new Error(t.errorInvalidFormat)
-      }
+    console.log("=========== PROCESSING DATA START ===========")
 
-      console.log("Processing data:")
+    // Use immediate processing to prevent race conditions
+    try {
       console.log("Followers data:", followersData.length, "items")
       console.log("Following data:", followingData.length, "items")
+      
+      if (followersData.length > 0) {
+        console.log("Follower sample:", JSON.stringify(followersData[0], null, 2))
+      }
+      
+      if (followingData.length > 0) {
+        console.log("Following sample:", JSON.stringify(followingData[0], null, 2))
+      }
 
-      let usernameField = 'username'
-
-      if (followersData.length > 0 && !followersData[0].hasOwnProperty('username')) {
-        const possibleFields = ['username', 'string_list_data', 'value', 'name', 'user', 'login']
-
-        for (const field of possibleFields) {
-          if (followersData[0].hasOwnProperty(field)) {
-            usernameField = field
-            break
-          } else if (followersData[0].string_list_data &&
-            followersData[0].string_list_data[0] &&
-            followersData[0].string_list_data[0].value) {
-            usernameField = 'special_instagram_format'
-            break
+      // Create Sets for faster lookup
+      let followers = new Set()
+      let followingList = []
+      
+      // Extract usernames from followers with detailed logging
+      console.log("Extracting followers usernames...")
+      let followerFailCount = 0
+      let followerSuccessCount = 0
+      
+      for (const follower of followersData) {
+        let username = extractUsername(follower)
+        if (username) {
+          followers.add(username.toLowerCase())
+          followerSuccessCount++
+        } else {
+          followerFailCount++
+          if (followerFailCount < 5) {
+            console.log("Failed to extract username from follower:", follower)
           }
         }
       }
-
-      let followers
-      let followingList
-
-      if (usernameField === 'special_instagram_format') {
-        followers = new Set(
-          followersData
-            .filter(item => item.string_list_data && item.string_list_data[0])
-            .map(item => item.string_list_data[0].value)
-        )
-
-        followingList = followingData
-          .filter(item => item.string_list_data && item.string_list_data[0])
-          .map(item => ({
-            username: item.string_list_data[0].value,
-            full_name: item.string_list_data[0].href || '',
-            profile_pic_url: ''
-          }))
-      } else {
-        followers = new Set(followersData.map(user => user[usernameField]))
-        followingList = followingData
+      
+      console.log(`Extracted ${followerSuccessCount} usernames, failed for ${followerFailCount} followers`)
+      
+      // Extract usernames and info from following
+      console.log("Extracting following usernames...")
+      let followingFailCount = 0
+      let followingSuccessCount = 0
+      
+      for (const following of followingData) {
+        let username = extractUsername(following)
+        if (username) {
+          followingList.push({
+            username: username,
+            full_name: extractFullName(following) || '',
+            profile_pic_url: extractPicUrl(following) || ''
+          })
+          followingSuccessCount++
+        } else {
+          followingFailCount++
+          if (followingFailCount < 5) {
+            console.log("Failed to extract username from following:", following)
+          }
+        }
       }
-
+      
+      console.log(`Extracted ${followingSuccessCount} usernames, failed for ${followingFailCount} following`)
+      
+      // Find users who don't follow back
+      console.log("Finding unfollowers...")
       const unfollowersList = followingList.filter(user => {
-        const username = usernameField === 'special_instagram_format' ?
-          user.username : user[usernameField]
-        return !followers.has(username)
+        if (!user.username) return false
+        const isFollowing = followers.has(user.username.toLowerCase())
+        return !isFollowing
       })
-
+      
       console.log(`Found ${unfollowersList.length} unfollowers`)
-
-      setUnfollowers(unfollowersList)
-      setStats({
-        totalFollowers: followersData.length,
-        totalFollowing: followingData.length,
+      
+      if (unfollowersList.length > 0) {
+        console.log("Sample unfollower:", unfollowersList[0])
+      }
+      
+      // Create fresh objects to ensure state update
+      const newStats = {
+        totalFollowers: followers.size,
+        totalFollowing: followingList.length,
         unfollowersCount: unfollowersList.length
+      }
+      
+      console.log("Setting new state:", {
+        stats: newStats,
+        unfollowers: unfollowersList.length
       })
-
+      
+      // Force a complete state reset to ensure React notices the change
+      setStats(prevStats => ({...newStats}))
+      setUnfollowers(prevUnfollowers => [...unfollowersList])
+      
+      // Show success message
       toast.success(t.successFoundUnfollowers.replace('{count}', unfollowersList.length))
+      
+      console.log("=========== PROCESSING DATA END ===========")
     } catch (error) {
       console.error("Error processing data:", error)
       toast.error(`${t.error}: ${error.message}`)
     } finally {
       setLoading(false)
     }
+  }, [followersData, followingData, t])
+  
+  // Helper function to extract username from various formats
+  const extractUsername = (item) => {
+    if (!item) return null
+    
+    // Handling string_list_data format (common in Instagram exports)
+    if (item.string_list_data && 
+        Array.isArray(item.string_list_data) && 
+        item.string_list_data[0] && 
+        item.string_list_data[0].value) {
+      return item.string_list_data[0].value
+    }
+    
+    // Direct username property
+    if (item.username) {
+      return item.username
+    }
+    
+    // Handle value property
+    if (item.value) {
+      return item.value
+    }
+    
+    // Handle direct string
+    if (typeof item === 'string') {
+      return item
+    }
+    
+    // Deep search for username-like fields in objects
+    if (typeof item === 'object' && !Array.isArray(item)) {
+      // Look for common username fields
+      for (const key of ['username', 'user', 'name', 'login', 'handle']) {
+        if (item[key] && typeof item[key] === 'string') {
+          return item[key]
+        }
+      }
+      
+      // Look for any string field that looks like a username
+      for (const key in item) {
+        const val = item[key]
+        if (typeof val === 'string' && 
+            !val.includes(' ') && 
+            val.length > 0 && 
+            val.length < 50) {
+          return val
+        }
+      }
+    }
+    
+    return null
   }
-
+  
+  // Helper to extract full name with better timestamp handling
+  const extractFullName = (item) => {
+    if (!item) return null
+    
+    if (item.full_name) {
+      // Return the full name if it's a string
+      if (typeof item.full_name === 'string') {
+        return item.full_name;
+      }
+      // If it's a timestamp, convert it to a readable date
+      if (typeof item.full_name === 'number') {
+        return `Last Active: ${new Date(item.full_name * 1000).toLocaleDateString()}`;
+      }
+    }
+    
+    // Handle Instagram's string_list_data format
+    if (item.string_list_data && item.string_list_data[0]) {
+      if (item.string_list_data[0].href) {
+        return item.string_list_data[0].href.replace('https://www.instagram.com/', '');
+      }
+      if (item.string_list_data[0].timestamp) {
+        const timestamp = item.string_list_data[0].timestamp;
+        if (typeof timestamp === 'number') {
+          return `Last Active: ${new Date(timestamp * 1000).toLocaleDateString()}`;
+        }
+        return String(timestamp);
+      }
+    }
+    
+    return null;
+  }
+  
+  // Helper to extract profile pic URL
+  const extractPicUrl = (item) => {
+    if (!item) return null
+    
+    if (item.profile_pic_url) return item.profile_pic_url
+    if (item.string_list_data && item.string_list_data[0] && item.string_list_data[0].profile_pic_url) {
+      return item.string_list_data[0].profile_pic_url
+    }
+    
+    return null
+  }
+  
+  // Check if we have unfollowers to display
+  const hasUnfollowers = unfollowers && unfollowers.length > 0
+  
+  // Debug effects
+  useEffect(() => {
+    console.log("State updated - unfollowers:", unfollowers.length)
+  }, [unfollowers])
+  
+  useEffect(() => {
+    console.log("State updated - stats:", stats)
+  }, [stats])
+  
   return (
     <div className="min-h-screen bg-base-200">
       <Header
@@ -150,50 +374,56 @@ export default function App() {
 
       {showWelcomeModal && <WelcomeModal onClose={handleCloseWelcomeModal} t={t} />}
 
+      {/* Add the debug panel */}
+      <DebugPanel 
+        followersData={followersData}
+        followingData={followingData}
+        unfollowers={unfollowers}
+        stats={stats}
+        loading={loading}
+      />
+
       <div className="container mx-auto px-4 py-8">
         <div className="grid gap-8">
-          {!unfollowers.length > 0 && (
+          {!hasUnfollowers && (
             <div className="text-center my-8">
               <h1 className="text-4xl font-bold mb-4">{t.appTitle}</h1>
               <p className="text-xl opacity-75 max-w-2xl mx-auto">
                 {t.tagline}
               </p>
               <div className="mt-4">
-                <button
+                <button 
                   onClick={handleShowTutorialAgain}
                   className="btn btn-outline btn-primary"
                 >
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mr-2">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" />
-                  </svg>
+                  <QuestionMarkIcon />
                   {t.showTutorial}
                 </button>
               </div>
             </div>
           )}
-
-          <FileUpload
+          
+          <FileUpload 
             setFollowersData={setFollowersData}
             setFollowingData={setFollowingData}
             processData={processData}
             isDataLoaded={!!(followersData && followingData)}
             t={t}
           />
-
-          {unfollowers.length > 0 && (
-            <>
+          
+          {/* Force render with key to ensure it updates when data changes */}
+          {hasUnfollowers && (
+            <div key={unfollowers.length}>
               <Stats stats={stats} t={t} />
               <UnfollowersList unfollowers={unfollowers} t={t} />
-            </>
+            </div>
           )}
 
-          {!unfollowers.length > 0 && (
+          {!hasUnfollowers && !loading && (
             <div className="card bg-base-100 shadow-xl">
               <div className="card-body">
                 <h2 className="card-title flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
-                  </svg>
+                  <InfoIcon />
                   {t.howToGetData}
                 </h2>
 
@@ -210,9 +440,7 @@ export default function App() {
                 </ol>
 
                 <div className="alert alert-warning mt-4">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="stroke-current shrink-0 h-6 w-6" fill="none" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                  </svg>
+                  <WarningIcon />
                   <div>
                     <h3 className="font-bold">{t.important}</h3>
                     <div className="text-sm">{t.dataPrivacyWarning}</div>
@@ -221,8 +449,17 @@ export default function App() {
               </div>
             </div>
           )}
+          
+          {/* Manual debug trigger */}
+          <div className="flex justify-center">
+            {loading && (
+              <div className="flex items-center gap-2">
+                <span className="loading loading-spinner text-primary"></span>
+                <span>{t.processing}</span>
+              </div>
+            )}
+          </div>
         </div>
-
       </div>
     </div>
   )

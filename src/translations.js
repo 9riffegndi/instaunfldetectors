@@ -102,7 +102,11 @@ export const translations = {
     errorUploadBoth: "Please upload both followers and following data files first",
     errorInvalidFormat: "Invalid data format: Expected arrays for followers and following",
     successFoundUnfollowers: "Found {count} users who don't follow you back",
-    
+    errorParseJson: "Could not parse JSON content from file",
+    errorFindJson: "Could not locate valid JSON content in the file",
+    errorNotArray: "File doesn't contain a valid array of users",
+    errorEmptyArray: "The file contains an empty array",
+    errorReadFile: "Failed to read file",
     
     // Language
     language: "Language",
@@ -212,6 +216,11 @@ export const translations = {
     errorUploadBoth: "Silakan unggah file data pengikut dan yang diikuti terlebih dahulu",
     errorInvalidFormat: "Format data tidak valid: Diharapkan array untuk pengikut dan yang diikuti",
     successFoundUnfollowers: "Ditemukan {count} pengguna yang tidak mengikuti Anda kembali",
+    errorParseJson: "Tidak dapat mengurai konten JSON dari file",
+    errorFindJson: "Tidak dapat menemukan konten JSON yang valid dalam file",
+    errorNotArray: "File tidak berisi array pengguna yang valid",
+    errorEmptyArray: "File berisi array kosong",
+    errorReadFile: "Gagal membaca file",
         
     // Language
     language: "Bahasa",

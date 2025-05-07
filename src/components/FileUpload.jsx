@@ -15,41 +15,261 @@ export default function FileUpload({ setFollowersData, setFollowingData, process
     
     reader.onload = (event) => {
       try {
-        // First try to parse directly
         let parsedData = null
         let result = event.target.result
         
-        try {
-          parsedData = JSON.parse(result)
-        } catch (e) {
-          console.log("Initial parsing failed, trying to find JSON content")
+        console.log(`Attempting to parse ${fileType} file:`, file.name)
+        
+        // SPECIAL HANDLING FOR FOLLOWING FILES
+        if (fileType === 'following') {
+          // Try a series of approaches specifically for following files
           
-          // Try to find JSON array in the content
-          const jsonStart = result.indexOf('[')
-          const jsonEnd = result.lastIndexOf(']')
-          
-          if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
-            const jsonContent = result.substring(jsonStart, jsonEnd + 1)
-            try {
-              parsedData = JSON.parse(jsonContent)
-            } catch (innerError) {
-              console.error("Failed to parse extracted content", innerError)
-              throw new Error("Could not parse JSON content from file")
+          // Approach 1: Direct parse (simplest case)
+          try {
+            parsedData = JSON.parse(result)
+            console.log("Direct parse successful")
+            
+            // Handle common structure where actual data is in relationships_following
+            if (parsedData && typeof parsedData === 'object' && !Array.isArray(parsedData)) {
+              if (parsedData.relationships_following) {
+                parsedData = parsedData.relationships_following
+                console.log("Extracted from relationships_following")
+              }
             }
+          } catch (e) {
+            console.log("Direct parse failed, trying alternatives", e)
+          }
+          
+          // Approach 2: Find arrays in the content
+          if (!parsedData || !Array.isArray(parsedData)) {
+            try {
+              // Try to find the first large array in the JSON
+              const arrayMatches = result.match(/\[\s*\{[^]*?\}\s*\]/g) || []
+              
+              if (arrayMatches.length > 0) {
+                // Sort by length to get the largest array (likely the following list)
+                arrayMatches.sort((a, b) => b.length - a.length)
+                
+                for (let i = 0; i < arrayMatches.length; i++) {
+                  try {
+                    const candidateData = JSON.parse(arrayMatches[i])
+                    if (Array.isArray(candidateData) && candidateData.length > 0) {
+                      parsedData = candidateData
+                      console.log(`Found array with ${candidateData.length} items`)
+                      break
+                    }
+                  } catch (err) {
+                    console.log("Failed to parse array candidate", i)
+                  }
+                }
+              }
+            } catch (e) {
+              console.log("Array extraction failed", e)
+            }
+          }
+          
+          // Approach 3: Search for specific string patterns
+          if (!parsedData || !Array.isArray(parsedData)) {
+            try {
+              // Look for the string_list_data pattern
+              const startIndex = result.indexOf('"string_list_data"')
+              if (startIndex !== -1) {
+                // Find the array that contains this pattern
+                let bracketCount = 0
+                let startBracketIndex = -1
+                let endBracketIndex = -1
+                
+                // Go backwards to find the starting bracket
+                for (let i = startIndex; i >= 0; i--) {
+                  if (result[i] === '[') {
+                    startBracketIndex = i
+                    break
+                  }
+                }
+                
+                // Go forward to find matching end bracket
+                if (startBracketIndex !== -1) {
+                  for (let i = startBracketIndex + 1; i < result.length; i++) {
+                    if (result[i] === '[') bracketCount++
+                    if (result[i] === ']') {
+                      if (bracketCount === 0) {
+                        endBracketIndex = i
+                        break
+                      }
+                      bracketCount--
+                    }
+                  }
+                  
+                  if (endBracketIndex !== -1) {
+                    const arrayContent = result.substring(startBracketIndex, endBracketIndex + 1)
+                    try {
+                      const extractedArray = JSON.parse(arrayContent)
+                      if (Array.isArray(extractedArray) && extractedArray.length > 0) {
+                        parsedData = extractedArray
+                        console.log(`Extracted array with ${extractedArray.length} items using bracket matching`)
+                      }
+                    } catch (e) {
+                      console.log("Failed to parse extracted bracket content", e)
+                    }
+                  }
+                }
+              }
+            } catch (e) {
+              console.log("Pattern search failed", e)
+            }
+          }
+          
+          // If all else fails, try to extract any JSON structure
+          if (!parsedData || !Array.isArray(parsedData)) {
+            try {
+              const jsonObjects = []
+              let inString = false
+              let escaped = false
+              let buffer = ''
+              let braceDepth = 0
+              
+              // Simple JSON object detector
+              for (let i = 0; i < result.length; i++) {
+                const char = result[i]
+                
+                if (char === '"' && !escaped) {
+                  inString = !inString
+                }
+                
+                if (!inString) {
+                  if (char === '{') {
+                    if (braceDepth === 0) {
+                      buffer = '{'
+                    } else {
+                      buffer += '{'
+                    }
+                    braceDepth++
+                  } else if (char === '}') {
+                    braceDepth--
+                    buffer += '}'
+                    
+                    if (braceDepth === 0) {
+                      try {
+                        const obj = JSON.parse(buffer)
+                        jsonObjects.push(obj)
+                      } catch (e) {
+                        // Not a valid JSON object
+                      }
+                      buffer = ''
+                    }
+                  } else if (braceDepth > 0) {
+                    buffer += char
+                  }
+                } else {
+                  buffer += char
+                }
+                
+                escaped = char === '\\' && !escaped
+              }
+              
+              // Check if we found objects with username-like properties
+              if (jsonObjects.length > 0) {
+                const usernameObjects = jsonObjects.filter(obj => 
+                  obj.username || 
+                  (obj.string_list_data && obj.string_list_data[0] && obj.string_list_data[0].value)
+                )
+                
+                if (usernameObjects.length > 0) {
+                  parsedData = usernameObjects
+                  console.log(`Created array from ${usernameObjects.length} extracted objects`)
+                }
+              }
+            } catch (e) {
+              console.log("JSON structure extraction failed", e)
+            }
+          }
+        } else {
+          // NORMAL HANDLING FOR FOLLOWERS FILE
+          
+          // Approach 1: Direct parse
+          try {
+            parsedData = JSON.parse(result)
+            console.log("Direct parse successful")
+          } catch (e) {
+            console.log("Direct parse failed, trying array extraction", e)
+            
+            // Approach 2: Find JSON array in the content
+            try {
+              const jsonStart = result.indexOf('[')
+              const jsonEnd = result.lastIndexOf(']')
+              
+              if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
+                const jsonContent = result.substring(jsonStart, jsonEnd + 1)
+                parsedData = JSON.parse(jsonContent)
+                console.log("Array extraction successful")
+              }
+            } catch (error) {
+              console.log("Array extraction failed", error)
+            }
+          }
+        }
+        
+        // If we still couldn't parse anything useful
+        if (!parsedData) {
+          throw new Error(t.errorFindJson || "Could not locate valid JSON content in the file")
+        }
+        
+        // Normalize data if it's not an array yet
+        if (!Array.isArray(parsedData)) {
+          // If parsedData is an object with properties, check for arrays
+          const arrayProps = Object.keys(parsedData).filter(key => 
+            Array.isArray(parsedData[key]) && parsedData[key].length > 0
+          )
+          
+          if (arrayProps.length > 0) {
+            // Use the largest array property
+            const largestArrayProp = arrayProps.reduce((a, b) => 
+              parsedData[a].length > parsedData[b].length ? a : b
+            )
+            parsedData = parsedData[largestArrayProp]
+            console.log(`Using array property: ${largestArrayProp} with ${parsedData.length} items`)
           } else {
-            throw new Error("Could not locate valid JSON content in the file")
+            // Convert single object to array if needed
+            parsedData = [parsedData]
+            console.log("Converted single object to array")
+          }
+        }
+        
+        // Handle string_list_data format processing (common in Instagram exports)
+        if (parsedData && Array.isArray(parsedData)) {
+          // Check if we need to extract from string_list_data structure
+          if (parsedData.length > 0 && 
+              parsedData[0].string_list_data && 
+              Array.isArray(parsedData[0].string_list_data)) {
+            console.log("Detected string_list_data format, extracting...")
+            parsedData = parsedData.map(item => {
+              if (item.string_list_data && item.string_list_data[0]) {
+                return {
+                  username: item.string_list_data[0].value || '',
+                  full_name: item.string_list_data[0].timestamp || '',
+                  profile_pic_url: ''
+                }
+              }
+              return null
+            }).filter(Boolean)
+            console.log("Converted data format:", parsedData[0])
           }
         }
         
         // Validate data is an array
         if (!Array.isArray(parsedData)) {
-          throw new Error("File doesn't contain a valid array of users")
+          throw new Error(t.errorNotArray || "File doesn't contain a valid array of users")
+        }
+        
+        if (parsedData.length === 0) {
+          throw new Error(t.errorEmptyArray || "The file contains an empty array")
         }
         
         // Debug validation
         console.log(`File ${fileType} contains:`, parsedData.length, "items")
         console.log("First item example:", parsedData[0])
         
+        // Handle Instagram's specific format
         if (fileType === 'followers') {
           setFollowersFile(file.name)
           setFollowersData(parsedData)
@@ -61,15 +281,31 @@ export default function FileUpload({ setFollowersData, setFollowingData, process
         }
       } catch (error) {
         console.error("Error processing file:", error)
-        toast.error(`${t.error}: ${error.message || "Invalid file format"}`)
+        toast.error(`${fileType === 'followers' ? t.followersJson : t.followingJson}: ${error.message || t.errorInvalidFormat}`)
+        
+        // Reset file input
+        if (fileType === 'followers') {
+          document.getElementById('followers-upload').value = ''
+          setFollowersFile(null)
+        } else {
+          document.getElementById('following-upload').value = ''
+          setFollowingFile(null)
+        }
       } finally {
         setLoading(false)
       }
     }
     
     reader.onerror = () => {
-      toast.error("Failed to read file")
+      toast.error(t.errorReadFile || "Failed to read file")
       setLoading(false)
+      
+      // Reset file state on error
+      if (fileType === 'followers') {
+        setFollowersFile(null)
+      } else {
+        setFollowingFile(null)
+      }
     }
     
     reader.readAsText(file)
@@ -101,6 +337,7 @@ export default function FileUpload({ setFollowersData, setFollowingData, process
             </label>
             <div className="relative w-full">
               <input 
+                id="followers-upload"
                 type="file" 
                 className="file-input file-input-bordered file-input-primary w-full" 
                 accept=".json,application/json,text/plain"
@@ -126,6 +363,7 @@ export default function FileUpload({ setFollowersData, setFollowingData, process
             </label>
             <div className="relative w-full">
               <input 
+                id="following-upload"
                 type="file" 
                 className="file-input file-input-bordered file-input-primary w-full" 
                 accept=".json,application/json,text/plain"
