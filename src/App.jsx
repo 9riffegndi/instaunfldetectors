@@ -1,20 +1,39 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Toaster, toast } from 'react-hot-toast'
 import Header from './components/Header'
 import FileUpload from './components/FileUpload'
 import UnfollowersList from './components/UnfollowersList'
 import Stats from './components/Stats'
+import WelcomeModal from './components/WelcomeModal'
 
 export default function App() {
   const [followersData, setFollowersData] = useState(null)
   const [followingData, setFollowingData] = useState(null)
   const [unfollowers, setUnfollowers] = useState([])
   const [loading, setLoading] = useState(false)
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false)
   const [stats, setStats] = useState({
     totalFollowers: 0,
     totalFollowing: 0,
     unfollowersCount: 0
   })
+
+  // Check if this is the first visit to show the welcome modal
+  useEffect(() => {
+    const hasSeenTutorial = localStorage.getItem('hasSeenTutorial')
+    if (!hasSeenTutorial) {
+      setShowWelcomeModal(true)
+    }
+  }, [])
+
+  const handleCloseWelcomeModal = () => {
+    setShowWelcomeModal(false)
+    localStorage.setItem('hasSeenTutorial', 'true')
+  }
+  
+  const handleShowTutorialAgain = () => {
+    setShowWelcomeModal(true)
+  }
 
   const processData = () => {
     if (!followersData || !followingData) {
@@ -91,6 +110,7 @@ export default function App() {
       // Log results
       console.log(`Found ${unfollowersList.length} unfollowers`)
       
+      // Update state with results
       setUnfollowers(unfollowersList)
       setStats({
         totalFollowers: followersData.length,
@@ -101,7 +121,7 @@ export default function App() {
       toast.success(`Found ${unfollowersList.length} users who don't follow you back`)
     } catch (error) {
       console.error("Error processing data:", error)
-      toast.error(`Error processing the JSON files: ${error.message}. Check the console for details.`)
+      toast.error(`Error: ${error.message}`)
     } finally {
       setLoading(false)
     }
@@ -109,7 +129,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-base-200">
-      <Header />
+      <Header onShowTutorial={handleShowTutorialAgain} />
       <Toaster 
         position="top-right"
         toastOptions={{
@@ -121,6 +141,9 @@ export default function App() {
         }}
       />
       
+      {/* Welcome modal that shows on first visit */}
+      {showWelcomeModal && <WelcomeModal onClose={handleCloseWelcomeModal} />}
+      
       <div className="container mx-auto px-4 py-8">
         <div className="grid gap-8">
           {!unfollowers.length > 0 && (
@@ -129,6 +152,17 @@ export default function App() {
               <p className="text-xl opacity-75 max-w-2xl mx-auto">
                 Find out who doesn't follow you back on Instagram by uploading your followers and following data
               </p>
+              <div className="mt-4">
+                <button 
+                  onClick={handleShowTutorialAgain}
+                  className="btn btn-outline btn-primary"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 mr-2">
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9.879 7.519c1.171-1.025 3.071-1.025 4.242 0 1.172 1.025 1.172 2.687 0 3.712-.203.179-.43.326-.67.442-.745.361-1.45.999-1.45 1.827v.75M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9 5.25h.008v.008H12v-.008Z" />
+                  </svg>
+                  Show Tutorial
+                </button>
+              </div>
             </div>
           )}
           
@@ -185,6 +219,12 @@ export default function App() {
             </div>
           )}
         </div>
+        
+        <footer className="footer footer-center p-4 text-base-content mt-16">
+          <div>
+            <p>Created with ❤️ using React, Tailwind CSS and DaisyUI</p>
+          </div>
+        </footer>
       </div>
     </div>
   )
